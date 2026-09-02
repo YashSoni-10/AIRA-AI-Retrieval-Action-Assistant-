@@ -13,11 +13,10 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before save
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+// Hash password before save (async hook in Mongoose 8 should NOT take or call next)
+userSchema.pre("save", async function () {
+  if (!this.isModified("password")) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // Compare password
