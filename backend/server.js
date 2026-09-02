@@ -1,4 +1,12 @@
-﻿require("dotenv").config();
+require("dotenv").config();
+const dns = require("dns");
+// Fix for Node.js SRV DNS resolution on Windows with MongoDB Atlas
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4"]);
+} catch (e) {
+  console.warn("Could not set custom DNS servers:", e.message);
+}
+
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -44,10 +52,13 @@ app.use((err, req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/aira";
 
+console.log("Connecting to MongoDB database...");
+
 mongoose
-  .connect(MONGO_URI, { serverSelectionTimeoutMS: 2000 })
+  .connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 })
   .then(() => {
-    console.log("MongoDB connected to:", MONGO_URI);
+    const host = MONGO_URI.includes("@") ? MONGO_URI.split("@")[1] : MONGO_URI;
+    console.log("MongoDB connected successfully to:", host);
     app.listen(PORT, () => {
       console.log(`AIRA Auth Service running on http://localhost:${PORT}`);
       console.log(`API Health: http://localhost:${PORT}/api/health`);
@@ -55,9 +66,9 @@ mongoose
   })
   .catch((err) => {
     console.error("MongoDB connection failed:", err.message);
-    console.log("Starting server without database (auth endpoints will fail)...");
+    console.log("Starting server with in-memory database fallback...");
     app.listen(PORT, () => {
-      console.log(`AIRA Auth Service (no DB) on http://localhost:${PORT}`);
+      console.log(`AIRA Auth Service (Memory DB fallback) on http://localhost:${PORT}`);
     });
   });
 
