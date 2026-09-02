@@ -1,0 +1,35 @@
+# Environment files
+.env
+.env.*
+!.env.example
+*.env
+*.env.*
+!.env.example
+
+# Node dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Python cache & environments
+__pycache__/
+*.py[cod]
+*.class
+*.pyc
+venv/
+.venv/
+env/
+Ai-Service/venv/
+Ai-Service/**/__pycache__/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
