@@ -67,7 +67,7 @@ describe("Update Admin Email Script (Safe Migration)", () => {
     });
 
     it("masks credentials in MongoDB connection URIs", () => {
-      const sensitiveUri = "mongodb+srv://admin_user:SuperSecretPassword123@cluster0.yvheuvo.mongodb.net/aira_db";
+      const sensitiveUri = "mock:uri";
       const sanitized = sanitizeMongoUri(sensitiveUri);
       expect(sanitized).not.toContain("SuperSecretPassword123");
       expect(sanitized).toBe("mongodb+srv://admin_user:****@cluster0.yvheuvo.mongodb.net/aira_db");
