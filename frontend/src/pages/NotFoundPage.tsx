@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import { IconSparkles } from "../components/icons";
 
 function NotFoundPage() {
   const { theme } = useTheme();
@@ -20,7 +21,7 @@ function NotFoundPage() {
               : "border-blue-200 bg-blue-600 text-white shadow-xl shadow-blue-200"
           }`}
         >
-          ✦
+          <IconSparkles className="h-10 w-10" />
         </div>
 
         {/* Error */}
