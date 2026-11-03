@@ -1,4 +1,23 @@
 require("dotenv").config();
+
+// ── Fail-fast: validate JWT_SECRET before anything else starts ─────────────────
+const _jwtSecret = process.env.JWT_SECRET;
+if (!_jwtSecret || _jwtSecret.trim() === "") {
+  console.error("FATAL: JWT_SECRET environment variable is not configured.");
+  console.error("Create backend/.env from backend/.env.example and set JWT_SECRET.");
+  process.exit(1);
+}
+if (_jwtSecret.length < 32) {
+  console.error("FATAL: JWT_SECRET is too short. Use a sufficiently long random secret (min 32 characters).");
+  process.exit(1);
+}
+const _refreshSecret = process.env.REFRESH_SECRET;
+if (_refreshSecret && _refreshSecret.trim().length < 32) {
+  console.error("FATAL: REFRESH_SECRET is too short when configured. Use min 32 characters or omit to default to JWT_SECRET.");
+  process.exit(1);
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 const dns = require("dns");
 // Fix for Node.js SRV DNS resolution on Windows with MongoDB Atlas
 try {
@@ -8,10 +27,17 @@ try {
 }
 
 const express = require("express");
+const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const { uploadLimiter, githubLimiter } = require("./src/middleware/rateLimiter");
 
 const app = express();
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 
 // CORS
 app.use(cors({
@@ -19,12 +45,26 @@ app.use(cors({
   credentials: true,
 }));
 
+const cookieParser = require("cookie-parser");
+
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+
+// Serve uploaded files (avatars, etc.)
+const path = require("path");
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Routes
 app.use("/api/auth", require("./src/routes/auth"));
+app.use("/api/workspace", require("./src/routes/workspace"));
+app.use("/api/conversations", require("./src/routes/conversation"));
+app.use("/api/documents", uploadLimiter, require("./src/routes/document"));
+app.use("/api/github", githubLimiter, require("./src/routes/github"));
+app.use("/api/dashboard", require("./src/routes/dashboard"));
+app.use("/api/tasks", require("./src/routes/tasks"));
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -73,3 +113,5 @@ mongoose
   });
 
 module.exports = app;
+
+

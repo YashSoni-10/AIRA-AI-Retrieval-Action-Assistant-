@@ -19,11 +19,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("aira-theme", theme);
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
-      document.body.style.backgroundColor = "#0d0c12";
-      document.body.style.color = "#e2e8f0";
+      document.body.style.backgroundColor = "#060812";
+      document.body.style.color = "#f4f4f5";
     } else {
       document.documentElement.classList.remove("dark");
-      document.body.style.backgroundColor = "#fcfbfa";
+      document.body.style.backgroundColor = "#f8fafc";
       document.body.style.color = "#0f172a";
     }
   }, [theme]);

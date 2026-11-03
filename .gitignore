@@ -33,3 +33,22 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Vector database and generated storage
+qdrant_storage/
+**/qdrant_storage/
+bm25_storage/
+**/bm25_storage/
+
+# Uploaded files
+backend/uploads/
+
+# Python test/cache files
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+npm-debug.log*
+
+Ai-Service/scratch/

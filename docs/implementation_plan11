@@ -1,0 +1,214 @@
+# AIRA — Phase 2 Implementation Audit
+**Date:** 2026-09-14 | Based on direct code inspection of every relevant file
+
+---
+
+## 1. What is Already Complete (Verified by Code Inspection)
+
+| Feature | Evidence |
+|---|---|
+| JWT authentication (Node backend) | `auth.js` middleware, `protect()` applied to all routes |
+| User registration + login | `authController.js` — full implementation |
+| Workspace model + default creation | `Workspace.js` — created in `authController.register()` |
+| Conversation model | `Conversation.js` — complete schema, user_id + workspace_id |
+| Message model | `Message.js` — full schema with sources + meta fields |
+| Conversation CRUD API | `conversationController.js` — all 6 methods, ownership verified |
+| Conversation routes | `conversation.js` — 6 routes registered, all behind `protect` |
+| Document model | `Document.js` — complete |
+| Document routes + controller | `document.js` / `documentController.js` — exists |
+| Qdrant persistent local storage | `vector_store.py` — `mode: local`, 1249 vectors survive restart |
+| user_id + workspace_id in Qdrant payload | `vector_store.py` — verified in Phase 1 |
+| Per-user search isolation | `similarity_search(user_id, workspace_id)` filter applied |
+| SSE streaming chat | `chat.py` — `GET /chat/stream`, SSE events: `reasoning_step`, `token`, `done`, `error` |
+| Frontend saves messages after stream | `ChatPage.tsx` L234–250 — `saveMessage()` called in `done` handler |
+| Frontend saves user message before stream | `ChatPage.tsx` L189–191 — `saveMessage()` called before SSE start |
+| Chat history sidebar in ChatPage | `ChatPage.tsx` L320–361 — slide-in sidebar with conversation list |
+| New Chat button | `ChatPage.tsx` L391–399 — creates MongoDB conversation |
+| Restore most recent conversation on load | `ChatPage.tsx` L132–165 — `init()` loads and restores |
+| KnowledgePage semantic search | `KnowledgePage.tsx` L3, L32 — wired to `searchKnowledge()` |
+| GitHub service + ProjectsPage wired | `ProjectsPage.tsx` L21–55 — full API integration with mock fallback |
+| Phase 1 test suite | `test_phase1_complete.py` — 51 tests, all passing |
+| LLM error handling in `rag_engine.py` | L108–120 — `try/except` around `get_llm_response()` |
+| Vector store error in `rag_engine.py` | L53–70 — `try/except RuntimeError` |
+
+---
+
+## 2. What is Partially Complete
+
+| Feature | Status | Evidence |
+|---|---|---|
+| Multi-turn conversation context | **PARTIAL** | Messages are saved to MongoDB ✅. But they are **never loaded back** into the RAG/LLM call — `chat.py` receives no `conversation_id`, `rag_engine.py` has no `history` parameter. Each query is stateless to the LLM. |
+| LLM error handling | **PARTIAL** | `rag_engine.py` has try/except ✅. But `llm_service.py` `_call_groq()` and `_call_gemini()` have **zero try/except** — API key errors, rate limits, timeouts propagate raw. The SSE stream endpoint does catch `Exception` broadly but LLM errors will still produce generic messages. |
+| Dashboard stats | **PARTIAL** | `App.tsx` L129: `value="128"`, L136: `value="24"`, L143: `value="12"`, L150: `value="94%"` — all hardcoded. No API call anywhere in `App.tsx`. |
+| SearchBox | **PARTIAL** | Component renders and is styled ✅. Has an input field and button. But: no `onChange` state, no `onSubmit`, no API call, no results display. Purely decorative. |
+| AIAssistant widget | **PARTIAL** | Component renders well ✅. Has a "Start conversation" button. But: button has no `onClick`, no API call, no chat logic. Purely decorative. |
+| ActivityPanel | **PARTIAL** | Component renders 3 hardcoded activities ✅. Items: "API Documentation.pdf", "GitHub connected", "AI task completed" — all static strings with fake timestamps. |
+| Task persistence | **PARTIAL** | `agent_service.py` L54: `"""simulated"""` — returns UUID dict but nothing is saved. No `Task.js` model, no `tasks.js` route, no `taskController.js`. |
+| Mock data indicator | **PARTIAL** | GitHub service returns mock data with log: `"Returning mock repositories fallback"` ✅. But `ProjectsPage.tsx` has no visible UI banner saying "Demo Data". |
+
+---
+
+## 3. What is Missing
+
+| Feature | Evidence |
+|---|---|
+| Multi-turn context in LLM call | `chat.py` ChatRequest: `{ query, top_k }` — no `conversation_id` field at all |
+| conversation_history passed to Groq | `rag_engine.py` `run_rag_query()` signature: no `history` param. `llm_service.py` builds only 2-message array: `[system, user]`. |
+| `_call_groq()` error handling | `llm_service.py` L32–42 — no try/except. Groq rate limit → raw `groq.RateLimitError` propagates |
+| `_call_gemini()` error handling | `llm_service.py` L45–55 — no try/except. Google API errors propagate raw |
+| Dashboard: real document count | `App.tsx` — no `useEffect`, no `checkHealth()` call, no state |
+| Dashboard: real conversation count | `App.tsx` — no API call. `/api/conversations` returns real count but is never called |
+| SearchBox state + API call | `SearchBox.tsx` — no `useState`, no `onChange`, no `onSubmit`, no results panel |
+| AIAssistant chat functionality | `AIAssistant.tsx` — button has no onClick, no API, no chat state |
+| Task.js model | `backend/src/models/Task.js` — does not exist |
+| tasks.js route | `backend/src/routes/tasks.js` — does not exist |
+| taskController.js | `backend/src/controllers/taskController.js` — does not exist |
+| `/api/tasks` route registered in server.js | `server.js` — no task route registration |
+| Task persistence in agent_service.py | `agent_service.py` L54: simulated, no HTTP call to backend |
+| Mock data indicator in ProjectsPage UI | `ProjectsPage.tsx` — no banner/badge showing mock status |
+| Phase 2 test suite | No `test_phase2.py` or `test_milestone1.py` exists |
+
+---
+
+## 4. Exact Files Changed per Feature (Milestone 1 only)
+
+### A1 — Multi-turn Conversation Context
+
+| File | Change |
+|---|---|
+| `Ai-Service/app/api/v1/endpoints/chat.py` | Add `conversation_id: str \| None` to stream query params; load last 6 messages from Node backend; inject as `history` into LLM call |
+| `Ai-Service/app/services/rag_engine.py` | Add `history: list[dict]` parameter; prepend to Groq messages array (capped at 6 turns = 12 messages) |
+| `Ai-Service/app/services/llm_service.py` | Add `history` param to `get_llm_response()` and `_call_groq()` / `_call_gemini()` |
+| `frontend/src/services/api.ts` | Pass `conversation_id` in stream URL: `&conversation_id=...` |
+| `frontend/src/pages/ChatPage.tsx` | Pass `conversationIdRef.current` to `streamChatMessage()` |
+
+### A2 — LLM Error Handling
+
+| File | Change |
+|---|---|
+| `Ai-Service/app/services/llm_service.py` | Wrap `_call_groq()` and `_call_gemini()` in try/except; catch rate limit, auth, network, empty response; raise `LLMError` with user-safe message |
+
+### A3 — Dashboard Live Stats
+
+| File | Change |
+|---|---|
+| `frontend/src/App.tsx` | Add `useEffect` + `useState`; call `checkHealth()` for vector count and `/api/conversations` for conversation count; replace hardcoded values |
+
+### A4 — SearchBox API Integration
+
+| File | Change |
+|---|---|
+| `frontend/src/components/SearchBox.tsx` | Add `useState` + debounced `searchKnowledge()` call; render results dropdown below input |
+
+### A5 — AIAssistant Widget
+
+| File | Change |
+|---|---|
+| `frontend/src/components/AIAssistant.tsx` | Add `useNavigate` — "Start conversation" navigates to `/chat`; add mini quick-ask input that calls `/chat/stream` and displays the answer inline |
+
+### A6 — ActivityPanel Live Data
+
+| File | Change |
+|---|---|
+| `backend/src/routes/document.js` | Add `GET /api/documents/recent` endpoint |
+| `backend/src/controllers/documentController.js` | Add `getRecentDocuments()` — last 5 uploads by user |
+| `backend/server.js` | Register tasks route (added in A7) |
+| `frontend/src/components/ActivityPanel.tsx` | Add `useEffect`; call `/api/documents/recent` + `/api/conversations`; render real items |
+
+### A7 — Task Persistence
+
+| File | Change |
+|---|---|
+| `backend/src/models/Task.js` | **NEW** — Task schema (user_id, workspace_id, title, description, priority, status, source_conversation_id) |
+| `backend/src/routes/tasks.js` | **NEW** — CRUD routes (POST, GET /, GET /:id, PATCH /:id, DELETE /:id) behind `protect` |
+| `backend/src/controllers/taskController.js` | **NEW** — createTask, listTasks, getTask, updateTask, deleteTask |
+| `backend/server.js` | Add `app.use("/api/tasks", require("./src/routes/tasks"))` |
+| `Ai-Service/app/services/agent_service.py` | Replace `tool_create_task()` simulated body with `httpx.post()` to Node backend `/api/tasks` using user's JWT |
+
+### A8 — Mock Data Indicator
+
+| File | Change |
+|---|---|
+| `Ai-Service/app/api/v1/endpoints/github.py` | Add `is_mock: bool` field to all three responses |
+| `frontend/src/pages/ProjectsPage.tsx` | Show "⚠️ Demo Data — Set GITHUB_TOKEN to connect" banner when `is_mock=true` |
+
+---
+
+## 5. Dependencies Required
+
+### Python (no new installs needed for Milestone 1)
+- `httpx` — already in `requirements.txt` ✅ (used in `ingest.py` for MongoDB hook)
+
+### Node.js (no new installs needed)
+- All mongoose/express/JWT packages already installed ✅
+
+### Frontend (no new installs needed)
+- `react-router-dom` `useNavigate` — already installed ✅
+
+---
+
+## 6. Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| History fetch in SSE stream adds latency | Chat feels slower by ~100–200ms | Cap history at 6 messages max; use `httpx` with 3s timeout; fail gracefully (no history = proceed without it) |
+| conversation_id not sent by frontend | History never fetched | Make it optional — `conversation_id` is a query param with `default=""` |
+| Groq messages array too long with history | Token limit exceeded | Cap: 6 history messages, each content truncated to 800 chars |
+| Task API call from Python to Node adds coupling | Agent slower; failure breaks agent | Use best-effort: `tool_create_task()` catches exception, returns success even if save fails |
+| `_call_groq()` error handling changes response format | Breaks tests | `raise LLMError(user_msg)` — caught by `rag_engine.py` existing `except Exception` |
+| Dashboard API calls on every mount | Dashboard feels slow | Call both APIs in parallel with `Promise.all`; show spinner during load |
+| SearchBox results popup UI complexity | Risk of regressions | Keep it minimal: dropdown list below input, max 5 results, close on blur |
+
+---
+
+## 7. First Milestone Plan (Milestone 1)
+
+**Scope:** A1 + A2 only (Multi-turn context + LLM error handling)
+
+**Rationale:** These are the two most impactful and self-contained changes. A1 requires only AI Service + frontend. A2 requires only `llm_service.py`. Neither touches the backend routes or database schema.
+
+### Execution order:
+1. `llm_service.py` — add try/except (15 minutes, zero risk)
+2. `rag_engine.py` — add `history: list[dict]` parameter, build messages array
+3. `chat.py` — add `conversation_id` query param to stream endpoint; fetch history via httpx
+4. `api.ts` — pass `conversation_id` in stream URL
+5. `ChatPage.tsx` — pass `conversationIdRef.current` to `streamChatMessage()`
+6. Run Phase 1 tests to verify no regression
+7. Manual test: ask follow-up question "Explain the second point" — verify LLM uses prior context
+
+### Test plan for Milestone 1:
+```
+# Run existing suite first (must still be 51/51)
+cd Ai-Service
+.\venv\Scripts\python.exe -m pytest tests/test_phase1_complete.py -v --tb=short
+
+# New test: multi-turn context
+# 1. Register user, get token
+# 2. Create conversation
+# 3. Upload document
+# 4. Stream chat message 1
+# 5. Stream chat message 2 with conversation_id
+# 6. Verify: Groq receives [system, history_msg_1, current_user_msg] (3+ messages)
+# 7. Verify: follow-up "what did you just say?" references prior answer
+```
+
+---
+
+## 8. Summary Status Table
+
+| Feature | Status | Files to Change |
+|---|---|---|
+| A1. Multi-turn context | **MISSING** | `chat.py`, `rag_engine.py`, `llm_service.py`, `api.ts`, `ChatPage.tsx` |
+| A2. LLM error handling | **PARTIAL** | `llm_service.py` (2 functions) |
+| A3. Dashboard live stats | **MISSING** | `App.tsx` |
+| A4. SearchBox API | **MISSING** | `SearchBox.tsx` |
+| A5. AIAssistant API | **MISSING** | `AIAssistant.tsx` |
+| A6. ActivityPanel live | **MISSING** | `ActivityPanel.tsx`, `documentController.js`, `document.js` |
+| A7. Task persistence | **MISSING** | `Task.js` (new), `tasks.js` (new), `taskController.js` (new), `server.js`, `agent_service.py` |
+| A8. Mock indicator | **MISSING** | `github.py`, `ProjectsPage.tsx` |
+| B1–B9 (Phase 2 intelligence) | **NOT STARTED** | After A1–A8 complete |
+
+> [!IMPORTANT]
+> **Awaiting approval to proceed with Milestone 1 (A1 + A2).**
+> No code has been changed. This is the audit only.
+> After approval, Milestone 1 will be implemented, tested, and reported before moving forward.
